@@ -9,7 +9,7 @@ Notes for the team:
 
 -When you want to modify the code, type **git pull**
 
--When you have finished and want to push the code back up to the repository, type **git commit -m "Your message here"** to let us know what you changed. Then type **git push** to upload the code. 
+-When you have finished and want to push the code back up to the repository, type **git add -A** and then **git commit -m "Your message here"** to let us know what you changed. Then type **git push** to upload the code. 
 
 
 If we have any problems with merging files, etc., let me know and I'll try and figure it out. For now, let's avoid working on the code simultaneously. 
