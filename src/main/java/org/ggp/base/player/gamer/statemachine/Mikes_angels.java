@@ -22,7 +22,7 @@ public class Mikes_angels extends StateMachineGamer {
 
 	//Limit for depth of our recursive search.
 	private static final int LIMIT = 12;
-	private static final int DEPTH_CHARGES = 4;
+	private static final int DEPTH_CHARGES = 5;
 	Player p;
 	Boolean ranOutOfTime;
 	double mobHeuristic;
@@ -264,6 +264,7 @@ public class Mikes_angels extends StateMachineGamer {
 		//Now we return a node
 		double maxScore = 0;
 		node bestNode = null;
+		System.out.println(currNode.children.size());
 		for(int i = 0; i < currNode.children.size(); i++){
 			if(currNode.children.get(i).utility > maxScore){
 				maxScore = currNode.children.get(i).utility;
