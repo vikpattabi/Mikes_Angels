@@ -39,59 +39,59 @@ public class Mikes_angels extends StateMachineGamer {
 			throws TransitionDefinitionException, MoveDefinitionException,
 			GoalDefinitionException {
 
-		int numGames = 0;
-		goalHeuristic = 0.5;
-		mobHeuristic = 0.5;
-
-		List<Double> mobVector = new ArrayList<Double>();
-		List<Double> goalVector = new ArrayList<Double>();
-		List<Double> terminalVector = new ArrayList<Double>();
-
-		while(true){
-			List<List<Double>> result = runRandomGame(timeout);
-			if(result == null){
-				System.out.println("Out of time");
-				break;
-			}
-			mobVector.addAll(result.get(0));
-			goalVector.addAll(result.get(1));
-			terminalVector.addAll(result.get(2));
-
-			numGames++;
-		}
-
-		//If we dont play more than one game, we only have one data point, so its meaningless
-		if(numGames > 1){
-			//System.out.println(mobVector);
-			//System.out.println(goalVector);
-			//System.out.println(terminalVector);
-
-			//X is val of mobility or goalutility, y is the final state
-			double B1 = covar(mobVector, mean(mobVector), terminalVector, mean(terminalVector)) / var(mobVector, mean(mobVector));
-			double B0 = mean(terminalVector) - B1*mean(mobVector);
-
-			double C1 = covar(goalVector, mean(goalVector), terminalVector, mean(terminalVector)) / var(goalVector, mean(goalVector));
-			double C0 = mean(terminalVector) - C1*mean(goalVector);
-
-			//The first val is for mobility
-			//The 2nd val is for goal utility
-			System.out.println("Mobility: " + B0 + " Goal utility: " + C0);
-
-			//Now set the heuristic val based on the analysis
-			if(B0 <= 0 && C0 > 0){
-				goalHeuristic = .9;
-				mobHeuristic = .1;
-			} else if (C0 <= 0 && B0 > 0){
-				mobHeuristic = .9;
-				goalHeuristic = .1;
-			} else if (!(C0 <= 0 && B0 <= 0)){
-				goalHeuristic += C0/(C0 + B0);
-				mobHeuristic += B0/(C0 + B0);
-			}
-
-			System.out.println("Mobility heuristic: " + mobHeuristic + " Goal heuristic: " + goalHeuristic);
-
-		}
+//		int numGames = 0;
+//		goalHeuristic = 0.5;
+//		mobHeuristic = 0.5;
+//
+//		List<Double> mobVector = new ArrayList<Double>();
+//		List<Double> goalVector = new ArrayList<Double>();
+//		List<Double> terminalVector = new ArrayList<Double>();
+//
+//		while(true){
+//			List<List<Double>> result = runRandomGame(timeout);
+//			if(result == null){
+//				System.out.println("Out of time");
+//				break;
+//			}
+//			mobVector.addAll(result.get(0));
+//			goalVector.addAll(result.get(1));
+//			terminalVector.addAll(result.get(2));
+//
+//			numGames++;
+//		}
+//
+//		//If we dont play more than one game, we only have one data point, so its meaningless
+//		if(numGames > 1){
+//			//System.out.println(mobVector);
+//			//System.out.println(goalVector);
+//			//System.out.println(terminalVector);
+//
+//			//X is val of mobility or goalutility, y is the final state
+//			double B1 = covar(mobVector, mean(mobVector), terminalVector, mean(terminalVector)) / var(mobVector, mean(mobVector));
+//			double B0 = mean(terminalVector) - B1*mean(mobVector);
+//
+//			double C1 = covar(goalVector, mean(goalVector), terminalVector, mean(terminalVector)) / var(goalVector, mean(goalVector));
+//			double C0 = mean(terminalVector) - C1*mean(goalVector);
+//
+//			//The first val is for mobility
+//			//The 2nd val is for goal utility
+//			System.out.println("Mobility: " + B0 + " Goal utility: " + C0);
+//
+//			//Now set the heuristic val based on the analysis
+//			if(B0 <= 0 && C0 > 0){
+//				goalHeuristic = .9;
+//				mobHeuristic = .1;
+//			} else if (C0 <= 0 && B0 > 0){
+//				mobHeuristic = .9;
+//				goalHeuristic = .1;
+//			} else if (!(C0 <= 0 && B0 <= 0)){
+//				goalHeuristic += C0/(C0 + B0);
+//				mobHeuristic += B0/(C0 + B0);
+//			}
+//
+//			System.out.println("Mobility heuristic: " + mobHeuristic + " Goal heuristic: " + goalHeuristic);
+//
+//		}
 	}
 
 	/*
@@ -213,7 +213,7 @@ public class Mikes_angels extends StateMachineGamer {
 //		return bestNetMoveID(role, state, machine, timeout);
 
 		List<node> empty = new ArrayList<node>();
-		node start = makeNode(state, 0, 0, null, empty, null);
+		node start = makeNode(false, state, 0, 0, null, empty, null, true);
 		return bestMoveMCTS(timeout, start, role);
 
 	}
@@ -223,6 +223,35 @@ public class Mikes_angels extends StateMachineGamer {
 	/*
 	 *************THESE ARE FUNCTIONS WE ADDED*****************
 	 */
+
+	/*
+	 * Stuff for MCTS (n-player)
+	 *
+	 */
+
+	class node{
+		int visited;
+		List<node> children;
+		double utility;
+		node parent;
+		MachineState state;
+		Move move;
+		Boolean allChildrenSeen;
+		Boolean role; //Tells us if we're at a "min node" or a "max node" aka whether its our move.
+	}
+
+	private node makeNode(Boolean childrenSeen, MachineState state, int visited, double utility, node parent, List<node> children, Move move, Boolean ourRole){
+		node result = new node();
+		result.allChildrenSeen = childrenSeen;
+		result.state = state;
+		result.children= children;
+		result.visited = visited;
+		result.utility = utility;
+		result.parent = parent;
+		result.move = move;
+		result.role = ourRole;
+		return result;
+	}
 
 	private Move bestMoveMCTS(long timeout, node currNode, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException{
 		node workingNode;
@@ -245,15 +274,6 @@ public class Mikes_angels extends StateMachineGamer {
 		//Now the best node is stored in bestNode. We need to find the move that gets us there.
 	}
 
-	class node{
-		int visited;
-		List<node> children;
-		double utility;
-		node parent;
-		MachineState state;
-		Move move;
-	}
-
 	//Select method for MCTS
 	private node select(node currNode) throws MoveDefinitionException{
 		if(currNode.visited == 0) return currNode;
@@ -274,38 +294,57 @@ public class Mikes_angels extends StateMachineGamer {
 
 	//selectfn method for MCTS
 	double selectfn(node curr){
-		return curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
-	}
-
-	private node makeNode(MachineState state, int visited, double utility, node parent, List<node> children, Move move){
-		node result = new node();
-		result.state = state;
-		result.children= children;
-		result.visited = visited;
-		result.utility = utility;
-		result.parent = parent;
-		result.move = move;
-		return result;
+		int coefficient = (curr.role) ? 1 : -1;
+		return coefficient * curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
 	}
 
 	//Expand function for MCTS
-	private void expand(node currNode, Role role) throws TransitionDefinitionException, MoveDefinitionException{
+	private void expand(node currNode, Role role) throws TransitionDefinitionException, MoveDefinitionException, GoalDefinitionException{
 		StateMachine machine = getStateMachine();
-		List<Move> moves = machine.findLegals(role, currNode.state);
-		for(int i = 0; i < moves.size(); i++){
-			List<Move> nextMoves = new ArrayList<Move>();
-			nextMoves.add(moves.get(i));
-			MachineState newState = machine.getNextState(currNode.state, nextMoves);
-			List<node> emptyChildren = new ArrayList<node>();
-			node newNode = makeNode(newState, 0, 0, currNode, emptyChildren, moves.get(i));
-			currNode.children.add(newNode);
+		if(machine.findTerminalp(currNode.state)){
+			currNode.utility = machine.findReward(role, currNode.state);
+			currNode.allChildrenSeen = true;
+		} else if (currNode.role){
+			List<Move> moves = machine.findLegals(role, currNode.state);
+			for(int i = 0; i < moves.size(); i++){
+				List<Move> nextMoves = new ArrayList<Move>();
+				nextMoves.add(moves.get(i));
+				MachineState newState = machine.getNextState(currNode.state, nextMoves);
+				List<node> emptyChildren = new ArrayList<node>();
+				node newNode = makeNode(false, newState, 0, 0, currNode, emptyChildren, moves.get(i), !currNode.role);
+				currNode.children.add(newNode);
+			}
+		} else {
+			List<List<Move>> moves = machine.getLegalJointMoves(currNode.state, role, currNode.move);
+			for(int i = 0; i < moves.size(); i++){
+				MachineState newState = machine.getNextState(currNode.state, moves.get(i));
+				List<node> emptyChildren = new ArrayList<node>();
+				node newNode = makeNode(false, newState, 0, 0, currNode, emptyChildren, null, !currNode.role);
+				currNode.children.add(newNode);
+			}
 		}
 	}
 
 	//backpropogate function for MCTS
 	private void backProp(node curr, double score){
-		curr.visited++;
-		curr.utility += score;
+		List<node> children = curr.children;
+		Boolean allVisited = false;;
+		for(int i = 0; i < children.size(); i++){
+			allVisited = children.get(i).allChildrenSeen;
+			if(!allVisited) break;
+		}
+		if(allVisited) curr.allChildrenSeen = true;
+
+		//So here, basically if we recieve a score of 100 from a child, we KNOW
+		//that we can win from here, so EMPHASIZE this node by adding more score/visits
+		if(allVisited){
+			curr.visited+=10;
+			curr.utility += 10*score;
+		} else {
+			curr.visited++;
+			curr.utility += score;
+		}
+
 		if(curr.parent != null)  backProp(curr.parent, score);
 	}
 

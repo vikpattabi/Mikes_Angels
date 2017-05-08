@@ -163,7 +163,7 @@ public abstract class StateMachine
      * list containing one move per role.
      *
      * @param moves A list containing one move per role. The moves should be
-     * listed in the same order as roles are listed by {@link #getRoles()}.
+     * listed in the same order as roles are listed by {@link # s()}.
      * @throws TransitionDefinitionException indicates an error in either the
      * game description or the StateMachine implementation.
      */
