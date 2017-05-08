@@ -208,9 +208,14 @@ public class Mikes_angels extends StateMachineGamer {
 
 		//This is bestMove without iterative deepening (so a fixed limit combined with variable heuristic)
 		//return bestMove(role,state,machine);
-		if (machine.findLegals(role, state).size() == 1) return machine.findLegals(role, state).get(0);
-		ranOutOfTime = false;
-		return bestNetMoveID(role, state, machine, timeout);
+//		if (machine.findLegals(role, state).size() == 1) return machine.findLegals(role, state).get(0);
+//		ranOutOfTime = false;
+//		return bestNetMoveID(role, state, machine, timeout);
+
+		List<node> empty = new ArrayList<node>();
+		node start = makeNode(state, 0, 0, null, empty, null);
+		return bestMoveMCTS(timeout, start, role);
+
 	}
 
 
@@ -218,13 +223,27 @@ public class Mikes_angels extends StateMachineGamer {
 	/*
 	 *************THESE ARE FUNCTIONS WE ADDED*****************
 	 */
-//
-//	private Move bestMoveMCTS(long timeout){
-//
-//		while(!outOfTime(timeout)){
-//
-//		}
-//	}
+
+	private Move bestMoveMCTS(long timeout, node currNode, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException{
+		node workingNode;
+		while(!outOfTime(timeout)){
+			workingNode = select(currNode);
+			expand(workingNode, role);
+			double simVal = monteCarlo(role, workingNode.state, timeout);
+			backProp(workingNode, simVal);
+		}
+		//Now we return a node
+		double maxScore = 0;
+		node bestNode = null;
+		for(int i = 0; i < currNode.children.size(); i++){
+			if(currNode.children.get(i).utility > maxScore){
+				maxScore = currNode.children.get(i).utility;
+				bestNode = currNode.children.get(i);
+			}
+		}
+		return bestNode.move;
+		//Now the best node is stored in bestNode. We need to find the move that gets us there.
+	}
 
 	class node{
 		int visited;
@@ -232,6 +251,7 @@ public class Mikes_angels extends StateMachineGamer {
 		double utility;
 		node parent;
 		MachineState state;
+		Move move;
 	}
 
 	//Select method for MCTS
@@ -257,13 +277,14 @@ public class Mikes_angels extends StateMachineGamer {
 		return curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
 	}
 
-	private node makeNode(MachineState state, int visited, double utility, node parent, List<node> children){
+	private node makeNode(MachineState state, int visited, double utility, node parent, List<node> children, Move move){
 		node result = new node();
 		result.state = state;
 		result.children= children;
 		result.visited = visited;
 		result.utility = utility;
 		result.parent = parent;
+		result.move = move;
 		return result;
 	}
 
@@ -276,7 +297,7 @@ public class Mikes_angels extends StateMachineGamer {
 			nextMoves.add(moves.get(i));
 			MachineState newState = machine.getNextState(currNode.state, nextMoves);
 			List<node> emptyChildren = new ArrayList<node>();
-			node newNode = makeNode(newState, 0, 0, currNode, emptyChildren);
+			node newNode = makeNode(newState, 0, 0, currNode, emptyChildren, moves.get(i));
 			currNode.children.add(newNode);
 		}
 	}
