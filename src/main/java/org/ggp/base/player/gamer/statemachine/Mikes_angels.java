@@ -22,7 +22,7 @@ public class Mikes_angels extends StateMachineGamer {
 
 	//Limit for depth of our recursive search.
 	private static final int LIMIT = 12;
-	private static final int DEPTH_CHARGES = 5;
+	private static final int DEPTH_CHARGES = 2;
 	Player p;
 	Boolean ranOutOfTime;
 	double mobHeuristic;
@@ -202,7 +202,6 @@ public class Mikes_angels extends StateMachineGamer {
 			throws TransitionDefinitionException, MoveDefinitionException,
 			GoalDefinitionException {
 
-		StateMachine machine = getStateMachine();
 		MachineState state = getCurrentState();
 		Role role = getRole();
 
@@ -254,17 +253,22 @@ public class Mikes_angels extends StateMachineGamer {
 	}
 
 	private Move bestMoveMCTS(long timeout, node currNode, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException{
+		StateMachine machine = getStateMachine();
+		Boolean onePlayer = (machine.getRoles().size() == 1);
 		node workingNode;
 		while(!outOfTime(timeout)){
-			workingNode = select(currNode);
-			expand(workingNode, role);
+			workingNode = select(currNode, onePlayer);
+			expand(workingNode, role, onePlayer);
 			double simVal = monteCarlo(role, workingNode.state, timeout);
 			backProp(workingNode, simVal);
 		}
 		//Now we return a node
 		double maxScore = 0;
 		node bestNode = null;
+		System.out.println("Finished current round of MCTS.");
 		System.out.println(currNode.children.size());
+		System.out.println(machine.getLegalMoves(currNode.state, role).size());
+		System.out.println("");
 		for(int i = 0; i < currNode.children.size(); i++){
 			if(currNode.children.get(i).utility > maxScore){
 				maxScore = currNode.children.get(i).utility;
@@ -276,15 +280,16 @@ public class Mikes_angels extends StateMachineGamer {
 	}
 
 	//Select method for MCTS
-	private node select(node currNode) throws MoveDefinitionException{
+	private node select(node currNode, Boolean onePlayer) throws MoveDefinitionException{
 		if(currNode.visited == 0) return currNode;
+		//System.out.println("Size of curr node's children: " + currNode.children.size());
 		for(int i = 0; i < currNode.children.size(); i++){
 			if(currNode.children.get(i).visited == 0) return currNode.children.get(i);
 		}
 		double score = 0;
 		node result = currNode;
 		for(int i = 0; i < currNode.children.size(); i++){
-			double newscore = selectfn(currNode.children.get(i));
+			double newscore = selectfn(currNode.children.get(i), onePlayer);
 			if(newscore > score){
 				score = newscore;
 				result = currNode.children.get(i);
@@ -294,18 +299,19 @@ public class Mikes_angels extends StateMachineGamer {
 	}
 
 	//selectfn method for MCTS
-	double selectfn(node curr){
-		int coefficient = (curr.role) ? 1 : -1;
+	double selectfn(node curr, Boolean onePlayer){
+		int coefficient = (onePlayer) ? 1 : ((curr.role) ? 1 : -1);
 		return coefficient * curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
 	}
 
 	//Expand function for MCTS
-	private void expand(node currNode, Role role) throws TransitionDefinitionException, MoveDefinitionException, GoalDefinitionException{
+	private void expand(node currNode, Role role, Boolean onePlayer) throws TransitionDefinitionException, MoveDefinitionException, GoalDefinitionException{
 		StateMachine machine = getStateMachine();
 		if(machine.findTerminalp(currNode.state)){
+			System.out.println("At a terminal state.");
 			currNode.utility = machine.findReward(role, currNode.state);
 			currNode.allChildrenSeen = true;
-		} else if (currNode.role){
+		} else if (currNode.role || onePlayer){
 			List<Move> moves = machine.findLegals(role, currNode.state);
 			for(int i = 0; i < moves.size(); i++){
 				List<Move> nextMoves = new ArrayList<Move>();
@@ -334,7 +340,10 @@ public class Mikes_angels extends StateMachineGamer {
 			allVisited = children.get(i).allChildrenSeen;
 			if(!allVisited) break;
 		}
-		if(allVisited) curr.allChildrenSeen = true;
+		if(allVisited){
+			curr.allChildrenSeen = true;
+			System.out.println("Set a node's allChildrenVisited to TRUE");
+		}
 
 		//So here, basically if we recieve a score of 100 from a child, we KNOW
 		//that we can win from here, so EMPHASIZE this node by adding more score/visits
