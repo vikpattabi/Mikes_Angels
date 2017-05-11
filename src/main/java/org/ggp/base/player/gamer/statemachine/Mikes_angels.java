@@ -212,7 +212,7 @@ public class Mikes_angels extends StateMachineGamer {
 //		return bestNetMoveID(role, state, machine, timeout);
 
 		List<node> empty = new ArrayList<node>();
-		node start = makeNode(false, state, 0, 0, null, empty, null, true);
+		node start = makeNode(false, state, 0, 0, null, empty, null);
 		return bestMoveMCTS(timeout, start, role);
 
 	}
@@ -239,7 +239,7 @@ public class Mikes_angels extends StateMachineGamer {
 		Boolean role; //Tells us if we're at a "min node" or a "max node" aka whether its our move.
 	}
 
-	private node makeNode(Boolean childrenSeen, MachineState state, int visited, double utility, node parent, List<node> children, Move move, Boolean ourRole){
+	private node makeNode(Boolean childrenSeen, MachineState state, int visited, double utility, node parent, List<node> children, Move move){
 		node result = new node();
 		result.allChildrenSeen = childrenSeen;
 		result.state = state;
@@ -248,7 +248,6 @@ public class Mikes_angels extends StateMachineGamer {
 		result.utility = utility;
 		result.parent = parent;
 		result.move = move;
-		result.role = ourRole;
 		return result;
 	}
 
@@ -300,33 +299,47 @@ public class Mikes_angels extends StateMachineGamer {
 
 	//selectfn method for MCTS
 	double selectfn(node curr, Boolean onePlayer){
-		int coefficient = (onePlayer) ? 1 : ((curr.role) ? 1 : -1);
-		return coefficient * curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
+		//int coefficient = (onePlayer) ? 1 : ((curr.role) ? 1 : -1);
+		return curr.utility/curr.visited + Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
 	}
 
 	//Expand function for MCTS
 	private void expand(node currNode, Role role, Boolean onePlayer) throws TransitionDefinitionException, MoveDefinitionException, GoalDefinitionException{
 		StateMachine machine = getStateMachine();
+		List<Move> moves = machine.findLegals(role, currNode.state);
 		if(machine.findTerminalp(currNode.state)){
 			System.out.println("At a terminal state.");
 			currNode.utility = machine.findReward(role, currNode.state);
 			currNode.allChildrenSeen = true;
-		} else if (currNode.role || onePlayer){
-			List<Move> moves = machine.findLegals(role, currNode.state);
+		} else if (onePlayer){
 			for(int i = 0; i < moves.size(); i++){
 				List<Move> nextMoves = new ArrayList<Move>();
 				nextMoves.add(moves.get(i));
 				MachineState newState = machine.getNextState(currNode.state, nextMoves);
 				List<node> emptyChildren = new ArrayList<node>();
-				node newNode = makeNode(false, newState, 0, 0, currNode, emptyChildren, moves.get(i), !currNode.role);
+				node newNode = makeNode(false, newState, 0, 0, currNode, emptyChildren, moves.get(i));
 				currNode.children.add(newNode);
 			}
 		} else {
-			List<List<Move>> moves = machine.getLegalJointMoves(currNode.state, role, currNode.move);
 			for(int i = 0; i < moves.size(); i++){
-				MachineState newState = machine.getNextState(currNode.state, moves.get(i));
+				/*
+				 * We have the legal moves for our player. We will only simulate to next states
+				 * (aka make nodes) for "min moves" on the part of our opponents. Thus, we'll find the min move.
+				 */
+				List<List<Move>> jointMoves = machine.getLegalJointMoves(currNode.state, role, moves.get(i));
+				int reward = 101;
+
+				MachineState nextState = new MachineState();
+				for(int j = 0; j < jointMoves.size(); j++){
+					MachineState newState = machine.getNextState(currNode.state, jointMoves.get(j));
+					if(machine.findReward(role, newState) < reward){
+						reward = machine.findReward(role, newState);
+						nextState = newState;
+					}
+				}
+
 				List<node> emptyChildren = new ArrayList<node>();
-				node newNode = makeNode(false, newState, 0, 0, currNode, emptyChildren, null, !currNode.role);
+				node newNode = makeNode(false, nextState, 0, 0, currNode, emptyChildren, moves.get(i));
 				currNode.children.add(newNode);
 			}
 		}
