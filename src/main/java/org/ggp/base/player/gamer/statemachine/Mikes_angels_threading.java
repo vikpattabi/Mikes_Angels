@@ -3,6 +3,11 @@ package org.ggp.base.player.gamer.statemachine;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.ggp.base.apps.player.Player;
 import org.ggp.base.player.gamer.exception.GamePreviewException;
@@ -17,17 +22,16 @@ import org.ggp.base.util.statemachine.exceptions.TransitionDefinitionException;
 import org.ggp.base.util.statemachine.implementation.propnet.SamplePropNetStateMachine;
 
 
-public class Mikes_angels extends StateMachineGamer {
+public class Mikes_angels_threading extends StateMachineGamer {
 
 	//Limit for depth of our recursive search.
-	private static final int DEPTH_CHARGES = 4;
-	int numCharges;
+	private static final int DEPTH_CHARGES = 6;
+	private int numCharges;
 	Player p;
+	private ArrayList<StateMachine> threadMachines;
 
-	Boolean ranOutOfTime;
-	double mobHeuristic;
-	double goalHeuristic;
-	boolean greedyMode;
+	private boolean greedyMode;
+	private ExecutorService pool;
 
 	@Override
 	public StateMachine getInitialStateMachine() {
@@ -37,56 +41,38 @@ public class Mikes_angels extends StateMachineGamer {
 		return machine;
 	}
 
-	public boolean performDepthChargeTimed(MachineState state, long ref, StateMachine machine) throws TransitionDefinitionException, MoveDefinitionException {
-        while(!machine.isTerminal(state)) {
-            state = machine.getNextStateDestructively(state, machine.getRandomJointMove(state));
-            if (System.currentTimeMillis() - ref > 1500) {
-    			greedyMode = true;
-    			System.out.println("Let's get greedy.");
-    			return false;
-    		}
-        }
-        greedyMode = false;
+	public void performDepthChargeTimed(MachineState state, long ref, StateMachine machine) throws TransitionDefinitionException, MoveDefinitionException {
+		while(!machine.isTerminal(state)) {
+			state = machine.getNextStateDestructively(state, machine.getRandomJointMove(state));
+			if (System.currentTimeMillis() - ref > 1500) {
+				greedyMode = true;
+				System.out.println("Let's get greedy.");
+			}
+		}
+		greedyMode = false;
 		System.out.println("No greed today.");
-        return true;
-    }
+	}
 
 	@Override
 	public void stateMachineMetaGame(long timeout)
 			throws TransitionDefinitionException, MoveDefinitionException,
 			GoalDefinitionException {
+
 		System.out.println("hi meta");
 		StateMachine machine = getStateMachine();
 		long ref = System.currentTimeMillis();
+		pool = Executors.newFixedThreadPool(DEPTH_CHARGES);
 		performDepthChargeTimed(getCurrentState(),ref,machine);
-
-//
-//		if(machine.getRoles().size() > 1){
-//			node workingNode;
-//			while(!outOfTime(timeout) && unexplored > 0){
-//				workingNode = selectMultiplayer(treeRoot);
-//				unexplored -= 1;
-//
-//				if(!machine.isTerminal(workingNode.state)) expandMultiplayer(workingNode, getRole());
-//
-//				for(int i = 0; i < workingNode.children.size(); i++){
-//					for(int j = 0; j < workingNode.children.get(i).children.size(); j++){
-//						backPropMultiplayer(workingNode.children.get(i), monteCarlo(getRole(), workingNode.children.get(i).children.get(j).state, timeout));
-//					}
-//				}
-//			}
-//		} else {
-//			node workingNode;
-//			while(!outOfTime(timeout) && unexplored > 0){
-//				workingNode = select(treeRoot);
-//				unexplored -= 1;
-//				expandOnePlayer(workingNode, getRole());
-//				for(int i = 0; i < workingNode.children.size(); i++){
-//					backProp(workingNode, monteCarlo(getRole(), workingNode.children.get(i).state, timeout));
-//				}
-//			}
-//		}
-
+		if(greedyMode){
+			System.out.println("Not initializing threadsafe machines. Done with metagame.");
+			return;
+		}
+		threadMachines = new ArrayList<StateMachine>();
+		for(int i = 0; i < DEPTH_CHARGES; i++){
+			StateMachine curr = new SamplePropNetStateMachine();
+			curr.initialize(getMatch().getGame().getRules());
+			threadMachines.add(curr);
+		}
 		System.out.println("Done with metagame.");
 	}
 
@@ -131,7 +117,7 @@ public class Mikes_angels extends StateMachineGamer {
 	@Override
 	public Move stateMachineSelectMove(long timeout)
 			throws TransitionDefinitionException, MoveDefinitionException,
-			GoalDefinitionException {
+			GoalDefinitionException, InterruptedException, ExecutionException {
 
 		MachineState state = getCurrentState();
 		Role role = getRole();
@@ -145,13 +131,6 @@ public class Mikes_angels extends StateMachineGamer {
 			return machine.getLegalMoves(state, role).get(choice);
 		}
 
-		//This is bestMove without iterative deepening (so a fixed limit combined with variable heuristic)
-		//return bestMove(role,state,machine);
-
-
-//		ranOutOfTime = false;
-//		return bestNetMoveID(role, state, machine, timeout);
-
 		List<node> emptyChildren = new ArrayList<node>();
 		node treeRoot = makeNode(state, 0, 0, null, emptyChildren, null);
 
@@ -160,8 +139,6 @@ public class Mikes_angels extends StateMachineGamer {
 		}else {
 			return bestMoveMCTS_Multiplayer(treeRoot, timeout, role);
 		}
-
-
 	}
 
 	/*
@@ -193,16 +170,14 @@ public class Mikes_angels extends StateMachineGamer {
 		return result;
 	}
 
-	private Move bestMoveMCTS(node treeRoot, long timeout, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException{
+	private Move bestMoveMCTS(node treeRoot, long timeout, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException, InterruptedException, ExecutionException{
 		StateMachine machine = getStateMachine();
 		node workingNode;
 
 		while(!outOfTime(timeout)){
 			workingNode = select(treeRoot);
 			expandOnePlayer(workingNode, role);
-			for(int i = 0; i < workingNode.children.size(); i++){
-				backProp(workingNode, monteCarlo(role, workingNode.children.get(i).state, timeout));
-			}
+			backProp(workingNode, monteCarlo(role, workingNode.state, timeout));
 		}
 		System.out.println("Out of time for MCTS loop.");
 
@@ -223,21 +198,16 @@ public class Mikes_angels extends StateMachineGamer {
 		return bestNode.move;
 	}
 
-	private Move bestMoveMCTS_Multiplayer(node treeRoot, long timeout, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException{
+	private Move bestMoveMCTS_Multiplayer(node treeRoot, long timeout, Role role) throws MoveDefinitionException, TransitionDefinitionException, GoalDefinitionException, InterruptedException, ExecutionException{
 		numCharges = 0;
 		StateMachine machine = getStateMachine();
 		node workingNode;
 
 		while(!outOfTime(timeout)){
 			workingNode = selectMultiplayer(treeRoot);
-
-			if(!machine.isTerminal(workingNode.state)) expandMultiplayer(workingNode, role);
-
-			for(int i = 0; i < workingNode.children.size(); i++){
-				for(int j = 0; j < workingNode.children.get(i).children.size(); j++){
-					backPropMultiplayer(workingNode.children.get(i), monteCarlo(role, workingNode.children.get(i).children.get(j).state, timeout));
-				}
-			}
+			if(machine.isTerminal(workingNode.state)) continue;
+			expandMultiplayer(workingNode, role);
+			backPropMultiplayer(workingNode, monteCarlo(role, workingNode.state, timeout));
 		}
 
 		//Now we return a node
@@ -299,20 +269,25 @@ public class Mikes_angels extends StateMachineGamer {
 		for(int i = 0; i < currNode.children.size(); i++){
 			List<node> grandchildren = currNode.children.get(i).children;
 			for(int j = 0; j < grandchildren.size(); j++){
-				double newscore = selectfn(grandchildren.get(j));
-				if(newscore > score && machine.isTerminal(grandchildren.get(j).state)){
+				double newscore = selectfnmp(grandchildren.get(j));
+				//System.out.println("newscore: " + newscore);
+				if(newscore > score){
 					score = newscore;
 					result = grandchildren.get(j);
 				}
 			}
 		}
+
 		return selectMultiplayer(result);
 	}
 
 	//selectfn method for MCTS
 	double selectfn(node curr){
-		//int coefficient = (onePlayer) ? 1 : ((curr.role) ? 1 : -1);
-		return curr.utility + 50*Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
+		 return curr.utility/curr.visited+Math.sqrt(2*Math.log(curr.parent.visited)/curr.visited);
+	}
+
+	double selectfnmp(node curr){
+		 return curr.utility/curr.visited+Math.sqrt(2*Math.log(curr.parent.parent.visited)/curr.visited);
 	}
 
 	//Expand function for MCTS
@@ -338,7 +313,7 @@ public class Mikes_angels extends StateMachineGamer {
 
 		for(int i = 0; i < moves.size(); i++){
 			List<node> emptyChildren = new ArrayList<node>();
-			node newNode = makeNode(null, 0, 100, currNode, emptyChildren, moves.get(i));
+			node newNode = makeNode(null, 0, 0, currNode, emptyChildren, moves.get(i));
 			currNode.children.add(newNode);
 
 			List<List<Move>> jointMoves = machine.getLegalJointMoves(currNode.state, role, moves.get(i));
@@ -354,7 +329,7 @@ public class Mikes_angels extends StateMachineGamer {
 	//backpropogate function for MCTS
 	private void backProp(node curr, double score){
 		curr.visited++;
-		if(score > curr.utility) curr.utility = score;
+		curr.utility += score;
 		if(curr.parent != null)  backProp(curr.parent, score);
 	}
 
@@ -364,34 +339,60 @@ public class Mikes_angels extends StateMachineGamer {
 		if(curr.parent != null){
 			backPropMultiplayer(curr.parent, score);
 		}
-
-		if(curr.parent != null && curr.parent.parent != null)  backPropMultiplayer(curr.parent.parent, score);
 	}
 
 	private Boolean outOfTime(long timeout){
 		return ((timeout - System.currentTimeMillis()) < 3000);
 	}
 
-	private Boolean metaOOT(long timeout){
-		return ((timeout - System.currentTimeMillis()) < 2000);
-	}
-
-	private double monteCarlo(Role role, MachineState state, long timeout) throws GoalDefinitionException, TransitionDefinitionException, MoveDefinitionException {
+	private double monteCarlo(Role role, MachineState state, long timeout) throws GoalDefinitionException, TransitionDefinitionException, MoveDefinitionException, InterruptedException, ExecutionException {
 		StateMachine machine = getStateMachine();
-		int total = 0;
 		if(machine.isTerminal(state)) return machine.getGoal(state, role);
 
+		ArrayList<Future<Integer>> futures = new ArrayList<Future<Integer>>();
+		int total = 0;
 		for (int i = 0; i < DEPTH_CHARGES; i++) {
 			if (outOfTime(timeout)) break;
-			int[] distance = new int[1];
-			distance[0] = 0;
+			DepthCharge charge = new DepthCharge(state, threadMachines.get(i));
+			@SuppressWarnings("unchecked")
+			Future<Integer> result = pool.submit(charge);
+			futures.add(result);
 			numCharges++;
-			total += machine.findReward(role, machine.performDepthCharge(state, distance));
+		}
+		if (outOfTime(timeout)) return goalUtility(role, state);
+		for(int i = 0; i < futures.size(); i++){
+			total += futures.get(i).get();
+		}
+		return (double) total / futures.size();
+	}
+
+	/*
+	 * --------------------CODE FOR THREADING-----------------------
+	 */
+
+	public class DepthCharge implements Callable{
+		private StateMachine thread_machine;
+		private MachineState ourState;
+
+
+		public DepthCharge(MachineState state, StateMachine in){
+			ourState = state;
+			thread_machine = in;
 		}
 
-		if (outOfTime(timeout)) return 0;
-		return (double) total / DEPTH_CHARGES;
+		@Override
+		public Integer call() throws GoalDefinitionException, TransitionDefinitionException, MoveDefinitionException{
+			int[] distance = new int[1];
+			distance[0] = 0;
+			int result = thread_machine.findReward(getRole(), thread_machine.performDepthCharge(ourState, distance));
+			return result;
+		}
 	}
+
+
+	/*
+	 * -------------------------------------------------------------
+	 */
 
 	/*
 	 * Variable depth heuristic: NOT IN USE & UNTESTED
@@ -449,13 +450,6 @@ public class Mikes_angels extends StateMachineGamer {
 	}
 
 	/*
-	 * Weighted heuristic fn which combines focus, mobility, and goal utility. We need weights
-	 */
-	private double weightedHeuristic(Role role, MachineState state) throws MoveDefinitionException, GoalDefinitionException{
-		return goalHeuristic * goalUtility(role, state) + mobHeuristic * mobility(role, state);
-	}
-
-	/*
 	 *************END OF FUNCTIONS WE ADDED********************
 	 */
 
@@ -480,7 +474,7 @@ public class Mikes_angels extends StateMachineGamer {
 	@Override
 	public String getName() {
 		// TODO Auto-generated method stub
-		return "Mike's Angels";
+		return "Mike's Angels w/ threading";
 	}
 
 }
